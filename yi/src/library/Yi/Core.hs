@@ -79,7 +79,7 @@ import Yi.Keymap
 import Yi.Keymap.Keys
 import Yi.KillRing (krEndCmd)
 import Yi.Prelude
-import Yi.Process (popen, createSubprocess, readAvailable, SubprocessId, SubprocessInfo(..))
+import Yi.Process (popen, createSubprocess, readAvailable, CreateSubprocess, SubprocessId, SubprocessInfo(..))
 import Yi.String
 import Yi.Style (errorStyle, strongHintStyle)
 import qualified Yi.UI.Common as UI
@@ -362,20 +362,20 @@ terminateSubprocesses shouldTerminate _yi var = do
         return (var {yiSubprocesses = M.fromList toKeep}, ())
 
 -- | Start a subprocess with the given command and arguments.
-startSubprocess :: FilePath -> [String] -> (Either Exception ExitCode -> YiM x) -> YiM BufferRef
-startSubprocess cmd args onExit = onYiVar $ \yi var -> do
+startSubprocess :: CreateSubprocess -> (Either Exception ExitCode -> YiM x) -> YiM BufferRef
+startSubprocess sp onExit = onYiVar $ \yi var -> do
         let (e', bufref) = runEditor 
                               (yiConfig yi) 
-                              (printMsg ("Launched process: " ++ cmd) >> newBufferE (Left bufferName) (R.fromString ""))
+                              (printMsg ("Launched process: " ++ show sp) >> newBufferE (Left bufferName) (R.fromString ""))
                               (yiEditor var)
             procid = yiSubprocessIdSupply var + 1
-        procinfo <- createSubprocess cmd args bufref
+        procinfo <- createSubprocess sp bufref
         startSubprocessWatchers procid procinfo yi onExit
         return (var {yiEditor = e', 
                      yiSubprocessIdSupply = procid,
                      yiSubprocesses = M.insert procid procinfo (yiSubprocesses var)
                     }, bufref)
-  where bufferName = "output from " ++ cmd ++ " " ++ show args
+  where bufferName = "output from " ++ show sp
 
 startSubprocessWatchers :: SubprocessId -> SubprocessInfo -> Yi -> (Either Exception ExitCode -> YiM x) -> IO ()
 startSubprocessWatchers procid procinfo yi onExit = do

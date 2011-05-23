@@ -72,9 +72,9 @@ reloadProjectE s = withUI $ \ui -> reloadProject ui s
 
 -- | Run the given commands with args and pipe the ouput into the build buffer,
 -- which is shown in an other window.
-buildRun :: String -> [String] -> (Either Exception ExitCode -> YiM x) -> YiM ()
-buildRun cmd args onExit = withOtherWindow $ do
-   b <- startSubprocess cmd args onExit
+buildRun :: CreateSubprocess -> (Either Exception ExitCode -> YiM x) -> YiM ()
+buildRun sp onExit = withOtherWindow $ do
+   b <- startSubprocess sp onExit
    withEditor $ do
        maybeM deleteBuffer =<< cabalBuffer <$> getDynamic
        setDynamic $ CabalBuffer $ Just b
@@ -82,10 +82,10 @@ buildRun cmd args onExit = withOtherWindow $ do
    return ()
 
 makeBuild :: CommandArguments -> YiM ()
-makeBuild (CommandArguments args) = buildRun "make" args (const $ return ())
+makeBuild (CommandArguments args) = buildRun (proc "make" args) (const $ return ())
 
 cabalRun :: String -> (Either Exception ExitCode -> YiM x) -> CommandArguments -> YiM ()
-cabalRun cmd onExit (CommandArguments args) = buildRun "cabal" (cmd:args) onExit
+cabalRun cmd onExit (CommandArguments args) = buildRun (proc "cabal" (cmd:args)) onExit
 
 -----------------------
 -- | cabal-build
@@ -96,7 +96,7 @@ cabalBuildE = cabalRun "build" (const $ return ())
 shell :: YiM BufferRef
 shell = do
     sh <- io shellFileName
-    Interactive.interactive sh ["-i"]
+    Interactive.interactive (proc sh ["-i"])
     -- use the -i option for interactive mode (assuming bash)
 
 -- | Search the source files in the project.
@@ -106,8 +106,11 @@ searchSources = grepFind (Doc "*.hs")
 -- | Perform a find+grep operation
 grepFind :: String ::: FilePatternTag -> String ::: RegexTag -> YiM ()
 grepFind (Doc filePattern) (Doc searchedRegex) = withOtherWindow $ do
-    discard $ startSubprocess "find" [".",
-                                      "-name", "_darcs", "-prune", "-o",
-                                      "-name", filePattern, "-exec", "grep", "-Hnie", searchedRegex, "{}", ";"] (const $ return ())
+    discard $ startSubprocess 
+      (proc
+        "find" [".",
+                "-name", "_darcs", "-prune", "-o",
+                "-name", filePattern, "-exec", "grep", "-Hnie", searchedRegex, "{}", ";"])
+      (const $ return ())
     withBuffer $ setMode Compilation.mode
     return ()

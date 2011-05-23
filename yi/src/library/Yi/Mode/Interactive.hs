@@ -9,6 +9,7 @@ import Yi.History
 import Yi.Lexer.Alex (Tok)
 import Yi.Lexer.Compilation (Token)
 import qualified Yi.Mode.Compilation as Compilation
+import Yi.Process(CreateSubprocess)
 import qualified Yi.Syntax.OnlineTree as OnlineTree
 
 atLastLine :: BufferM Bool
@@ -68,9 +69,9 @@ setInput :: String -> BufferM ()
 setInput val = flip replaceRegionB val =<< getInputRegion
 
 -- | Open a new buffer for interaction with a process.
-interactive :: String -> [String] -> YiM BufferRef
-interactive cmd args = do
-    b <- startSubprocess cmd args (const $ return ())
+interactive ::  CreateSubprocess -> YiM BufferRef
+interactive sp = do
+    b <- startSubprocess sp (const $ return ())
     withEditor $ interactHistoryStart
     mode' <- lookupMode $ AnyMode mode
     withBuffer $ do m1 <- getMarkB (Just "StdERR")

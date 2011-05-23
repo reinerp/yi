@@ -19,6 +19,7 @@ import Yi.Syntax.Tree
 import Yi.MiniBuffer (CommandArguments(..))
 import Yi.Lexer.Alex
 import Yi.Keymap.Vim (savingCommandY)
+import Yi.Process(proc)
 
 abellaModeGen :: (Char -> [Event]) -> TokenBasedMode Abella.Token
 abellaModeGen abellaBinding =
@@ -91,7 +92,7 @@ abellaAbort = do abellaSend "abort."
 -- | Start Abella in a buffer
 abella :: CommandArguments -> YiM BufferRef
 abella (CommandArguments args) = do
-    b <- Interactive.interactive "abella" args
+    b <- Interactive.interactive (proc "abella" args)
     withEditor . setDynamic . AbellaBuffer $ Just b
     return b
 

@@ -1,16 +1,18 @@
 {-# LANGUAGE CPP #-}
 -- Copyright (c) 2005 Don Stewart - http://www.cse.unsw.edu.au/~dons
 module Yi.Process (popen, runProgCommand, runShellCommand, shellFileName,
-                   createSubprocess, readAvailable, SubprocessInfo(..), SubprocessId) where
+                   createSubprocess, readAvailable, CreateSubprocess(..), proc, SubprocessInfo(..), SubprocessId) where
 
 import System.Exit (ExitCode(ExitFailure))
 import System.Directory (findExecutable)
 import System.IO
-import System.Process
+import System.Process hiding(proc, cmdspec)
 import System.Environment ( getEnv )
 
 import Control.Concurrent       (forkIO)
 import qualified Control.OldException as Control.Exception
+
+import Data.List(intercalate)
 
 import Foreign.Marshal.Alloc(allocaBytes)
 import Foreign.C.String
@@ -21,6 +23,26 @@ import Yi.Monad(repeatUntilM)
 #ifndef mingw32_HOST_OS
 import System.Posix.IO
 #endif
+
+-- | Information describing construction of a process. This is essentially a 'CreateProcess', but without the stdin\/stdout\/stderr handling.
+data CreateSubprocess = CreateSubprocess 
+  {
+     cmdspec :: CmdSpec, -- ^ Executable and arguments, or shell command
+     cwd :: Maybe FilePath, -- ^ Optional path to the working directory for the new process
+     env :: Maybe [(String, String)] -- ^ Optional environment (otherwise inherit from the current process)
+  }
+
+-- | We show the 'cmdspec' but not the 'cwd' or 'env'
+instance Show CreateSubprocess where
+    show CreateSubprocess{cmdspec=ShellCommand c} = c
+    show CreateSubprocess{cmdspec=RawCommand p args} = p ++ " " ++ intercalate " " args
+
+proc :: FilePath -> [String] -> CreateSubprocess
+proc p args = CreateSubprocess (RawCommand p args) Nothing Nothing
+
+-- | Extend a 'CreateSubprocess' to a 'CreateProcess'
+toCreateProcess :: CreateSubprocess -> StdStream -> StdStream -> StdStream -> CreateProcess
+toCreateProcess (CreateSubprocess cmdspec cwd env) stdin stdout stderr = CreateProcess cmdspec cwd env stdin stdout stderr False
 
 
 -- | A Posix.popen compatibility mapping.
@@ -83,8 +105,7 @@ runShellCommand cmd = do
 type SubprocessId = Integer
 
 data SubprocessInfo = SubprocessInfo {
-      procCmd :: FilePath,
-      procArgs :: [String],
+      procCreate :: CreateSubprocess,
       procHandle :: ProcessHandle,
       hIn  :: Handle,
       hOut :: Handle,
@@ -104,18 +125,20 @@ Simon Marlow said this:
 Therefore it should be possible to simplifiy the following greatly with the new process package.
 
 -}
-createSubprocess :: FilePath -> [String] -> BufferRef -> IO SubprocessInfo
-createSubprocess cmd args bufref = do
+createSubprocess :: CreateSubprocess -- ^ Process creation information
+                 -> BufferRef  -- ^ Buffer for the output
+                 -> IO SubprocessInfo
+createSubprocess sp bufref = do
 
 #ifdef mingw32_HOST_OS
-    (inp,out,err,handle) <- runInteractiveProcess cmd args Nothing Nothing
+    (Just inp,Just out,Just err,handle) <- createProcess (toCreateProcess sp CreatePipe CreatePipe CreatePipe)
     let separate = True
 #else
     (inpReadFd,inpWriteFd) <- createPipe
     (outReadFd,outWriteFd) <- createPipe
     [inpRead,inpWrite,outRead,outWrite] <- mapM fdToHandle [inpReadFd,inpWriteFd,outReadFd,outWriteFd]
 
-    handle <- runProcess cmd args Nothing Nothing (Just inpRead) (Just outWrite) (Just outWrite)
+    (_,_,_,handle) <- createProcess (toCreateProcess sp (UseHandle inpRead) (UseHandle outWrite) (UseHandle outWrite))
     let inp = inpWrite
         out = outRead
         err = outRead
@@ -124,7 +147,7 @@ createSubprocess cmd args bufref = do
     hSetBuffering inp NoBuffering
     hSetBuffering out NoBuffering
     hSetBuffering err NoBuffering
-    return $ SubprocessInfo { procCmd=cmd, procArgs=args, procHandle=handle, hIn=inp, hOut=out, hErr=err, bufRef=bufref, separateStdErr=separate }
+    return $ SubprocessInfo { procCreate=sp, procHandle=handle, hIn=inp, hOut=out, hErr=err, bufRef=bufref, separateStdErr=separate }
 
 
 -- Read as much as possible from handle without blocking

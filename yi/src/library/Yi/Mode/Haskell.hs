@@ -38,6 +38,7 @@ import Yi.Lexer.Haskell as Haskell
 import qualified Yi.Mode.Interactive as Interactive
 import Yi.Modes (anyExtension, extensionOrContentsMatch)
 import Yi.MiniBuffer
+import Yi.Process(proc)
 
 haskellAbstract :: Mode (tree TT)
 haskellAbstract = emptyMode 
@@ -348,7 +349,7 @@ instance YiVariable GhciBuffer
 -- | Start GHCi in a buffer
 ghci :: YiM BufferRef
 ghci = do 
-    b <- Interactive.interactive "ghci" []
+    b <- Interactive.interactive (proc "ghci" [])
     withEditor $ setDynamic $ GhciBuffer $ Just b
     return b
 
