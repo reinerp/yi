@@ -791,7 +791,7 @@ defKeymap = Proto template
          (fmap.second.fmap) withEditor
          [([ctrlW, char 'c'], const tryCloseE)
          ,([ctrlW, char 'o'], const closeOtherE)
-         ,([ctrlW, char 's'], const splitE)
+         ,([ctrlW, char 's'], const oldSplitE)
          ,([ctrlW, char 'w'], nextWinE')
          ,([ctrlW, ctrlW],    nextWinE')
          ,([ctrlW, char 'W'], prevWinE')
@@ -1489,7 +1489,7 @@ TODO: use or remove
            fn "$"          = withBuffer' botB
            fn "p"          = withEditor prevBufW
            fn "prev"       = withEditor prevBufW
-           fn ('s':'p':_)  = withEditor splitE
+           fn ('s':'p':_)  = withEditor oldSplitE
            fn "e"          = revertE
            fn "edit"       = revertE
            fn ('e':' ':f)  = viFnewE f
@@ -1500,7 +1500,7 @@ TODO: use or remove
            fn ('r':'e':'a':'d':' ':f) = withBuffer' . insertN =<< io (readFile $ dropSpace f)
            fn ('s':'e':'t':' ':'f':'t':'=':ft)  = do (AnyMode m) <- anyModeByName (dropSpace ft) ; withBuffer $ setMode m
            fn ('s':'e':'t':' ':'t':'a':'g':'s':'=':fps)  = withEditor $ setTagsFileList fps
-           fn ('n':'e':'w':' ':f) = withEditor splitE >> viFnewE f
+           fn ('n':'e':'w':' ':f) = withEditor oldSplitE >> viFnewE f
            fn ('s':'/':cs) = withEditor $ viSub cs Line
            fn ('%':'s':'/':cs) = withEditor $ viSub cs Document
 

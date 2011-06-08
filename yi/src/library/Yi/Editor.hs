@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving, DeriveDataTypeable, FlexibleContexts, StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving, DeriveDataTypeable, FlexibleContexts, StandaloneDeriving, NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- Copyright (c) 2004-5, Don Stewart - http://www.cse.unsw.edu.au/~dons
@@ -580,13 +580,19 @@ focusWindowE k = do
             putA tabsA (fromJust $ PL.move tabIndex ts) 
             modA windowsA (\ws -> fromJust $ PL.move winIndex ws) 
 
+-- Urgh: preserve the old behaviour so we can get Yi.Core to compile, without needing Yi.Layout
+oldSplitE :: EditorM ()
+oldSplitE = splitE Horizontal
+
 -- | Split the current window, opening a second window onto current buffer.
 -- TODO: unfold newWindowE here?
-splitE :: EditorM ()
-splitE = do
+splitE :: Orientation -> EditorM ()
+splitE o = do
   b <- gets currentBuffer
   w <- newWindowE False b
+  Window { wkey } <- getA currentWindowA
   modA windowsA (PL.insertRight w)
+  layoutManagerSendMessageE (SplitWindow o (unWindowRef wkey))
 
 -- | Cycle to the next layout manager, or the first one if the current one is nonstandard.
 layoutManagersNextE :: EditorM ()
@@ -606,13 +612,19 @@ withLMStack f = askCfg >>= \cfg -> modA (tabLayoutManagerA . currentTabA) (go (l
          Nothing -> head lms
          Just lmsPL -> f lmsPL ^. PL.focusA
 
+-- | Sends the given message to the current layout manager
+layoutManagerSendMessageE :: LayoutManagerMessage msg => msg -> EditorM ()
+layoutManagerSendMessageE msg = modA (tabLayoutManagerA . currentTabA) (sendMessage msg)
+
 -- | Next variant of the current layout manager, as given by 'nextVariant'
+-- TODO: rename
 layoutManagerNextVariantE :: EditorM ()
-layoutManagerNextVariantE = modA (tabLayoutManagerA . currentTabA) nextVariant
+layoutManagerNextVariantE = layoutManagerSendMessageE IncreaseMainWindows
 
 -- | Previous variant of the current layout manager, as given by 'previousVariant'
+-- TODO: rename
 layoutManagerPreviousVariantE :: EditorM ()
-layoutManagerPreviousVariantE = modA (tabLayoutManagerA . currentTabA) previousVariant
+layoutManagerPreviousVariantE = layoutManagerSendMessageE DecreaseMainWindows
 
 
 -- | Enlarge the current window
@@ -682,7 +694,7 @@ shiftOtherWindow :: MonadEditor m => m ()
 shiftOtherWindow = liftEditor $ do
   len <- getsA windowsA PL.length
   if (len == 1) 
-    then splitE
+    then splitE Horizontal
     else nextWinE
 
 -- | Execute the argument in the context of an other window. Create

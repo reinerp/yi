@@ -248,7 +248,7 @@ emacsKeys univArg =
                  , char '^'      ?>>! (repeatingArg enlargeWinE)
                  , char '0'      ?>>! closeWindow
                  , char '1'      ?>>! closeOtherE
-                 , char '2'      ?>>! splitE
+                 , char '2'      ?>>! oldSplitE
                  , char 'h'      ?>>! selectAll
                  , char 's'      ?>>! askSaveEditor
                  , ctrlCh 'b'    ?>>! listBuffers

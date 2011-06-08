@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, ExistentialQuantification, DeriveFunctor, TupleSections, ViewPatterns #-}
+{-# LANGUAGE DeriveDataTypeable, ExistentialQuantification, DeriveFunctor, TupleSections, ViewPatterns, NamedFieldPuns #-}
 {-# OPTIONS_GHC -funbox-strict-fields #-} -- we might as well unbox our Ints.
 
 -- | This module defines the layout manager interface (see 'LayoutManager'). To desgin a new layout manager, just make an instance of this class.
@@ -15,6 +15,7 @@ module Yi.Layout
     -- * Layout managers
     -- ** The interface
     LayoutManager(..),
+    LayoutManagerMessage,
     AnyLayoutManager(..),
     layoutManagerSameType,
     -- ** Standard managers
@@ -23,7 +24,12 @@ module Yi.Layout
     slidyTall,
     slidyWide,
     hPairNStack,
+    IncreaseMainWindows(..),
+    DecreaseMainWindows(..),
     vPairNStack,
+    -- *** Manual layout manager
+    manualLayout,
+    SplitWindow(..),
     -- * Utility functions
     -- ** Layouts as rectangles
     Rectangle(..),
@@ -156,12 +162,16 @@ class (Typeable m, Eq m) => LayoutManager m where
   pureLayout :: m -> Layout a -> [a] -> Layout a
   -- | Describe the layout in a form suitable for the user.
   describeLayout :: m -> String
-  -- | Cycles to the next variant, if there is one (the default is 'id')
-  nextVariant :: m -> m
-  nextVariant = id
-  -- | Cycles to the previous variant, if there is one (the default is 'id'
-  previousVariant :: m -> m
-  previousVariant = id
+  -- | Sends a message to the layout manager, telling it to change its appearance.
+  -- This message may take any ('Typeable') type, so that layout managers may define
+  -- their own messages. Some examples
+  --
+  --  * 'hPairNStack' and 'vPairNStack' implement
+  sendMessage :: LayoutManagerMessage s => s -> m -> m
+  sendMessage = const id
+
+-- | Messages to
+class (Show a, Typeable a) => LayoutManagerMessage a
 
 -- | Existential wrapper for 'Layout'
 data AnyLayoutManager = forall m. LayoutManager m => AnyLayoutManager !m
@@ -173,8 +183,7 @@ instance Eq AnyLayoutManager where
 instance LayoutManager (AnyLayoutManager) where
   pureLayout (AnyLayoutManager l) = pureLayout l
   describeLayout (AnyLayoutManager l) = describeLayout l
-  nextVariant (AnyLayoutManager l) = AnyLayoutManager (nextVariant l)
-  previousVariant (AnyLayoutManager l) = AnyLayoutManager (previousVariant l)
+  sendMessage msg (AnyLayoutManager l) = AnyLayoutManager (sendMessage msg l)
 
 -- | The default layout is 'tallLayout'
 instance Initializable AnyLayoutManager where
@@ -246,6 +255,16 @@ instance LayoutManager SlidyWide where
     pureLayout (SlidyWide w) = pureLayout w
     describeLayout _ = "Slidy wide windows, with balanced-position sliders"
 
+-- | Message for 'vPairNStack' and 'hPairNStack' telling them to increase the number of \"main\" windows by 1
+data IncreaseMainWindows = IncreaseMainWindows
+  deriving(Typeable, Show)
+-- | Message for 'vPairNStack' and 'hPairNStack' telling them to decrease the number of \"main\" windows by 1
+data DecreaseMainWindows = DecreaseMainWindows
+  deriving(Typeable, Show)
+
+instance LayoutManagerMessage IncreaseMainWindows
+instance LayoutManagerMessage DecreaseMainWindows
+
 -- | Fixed number of \"main\" windows on the left; stack of windows on the right
 data HPairNStack = HPairNStack !Int
   deriving(Eq, Typeable)
@@ -268,8 +287,10 @@ instance LayoutManager HPairNStack where
               _ -> 0.5
 
     describeLayout (HPairNStack n) = show n ++ " windows on the left; remaining windows on the right"
-    nextVariant (HPairNStack n) = HPairNStack (n+1)
-    previousVariant (HPairNStack n) = HPairNStack (max (n-1) 1)
+    sendMessage (cast -> Just IncreaseMainWindows) (HPairNStack n) = HPairNStack (n+1)
+    sendMessage (cast -> Just DecreaseMainWindows) (HPairNStack n) = HPairNStack (max (n-1) 1)
+    sendMessage _ lm = lm
+    
 
 newtype VPairNStack = VPairNStack (Transposed HPairNStack)
   deriving(Eq, Typeable)
@@ -280,9 +301,32 @@ vPairNStack n = AnyLayoutManager (VPairNStack (Transposed (HPairNStack n)))
 
 instance LayoutManager VPairNStack where
     pureLayout (VPairNStack lm) = pureLayout lm
-    previousVariant (VPairNStack lm) = VPairNStack (previousVariant lm)
-    nextVariant (VPairNStack lm) = VPairNStack (nextVariant lm)
+    sendMessage m (VPairNStack lm) = VPairNStack (sendMessage m lm)
     describeLayout (VPairNStack (Transposed (HPairNStack n))) = show n ++ " windows on top; remaining windows beneath"
+
+-------------------------------- Manual layout manager
+-- | This is really just WindowRef, but we don't have access to that here, and we're pretending that
+-- 'LayoutManagers' are actually polymorphic in the window type...
+type LayoutRef = Int
+data ManualLayoutManager = ManualLayoutManager !(Layout LayoutRef)
+  deriving(Eq, Typeable)
+
+-- | Message for 'manualLayout', telling it to split the window named by 'LayoutRef' in the given orientation.
+data SplitWindow = SplitWindow !Orientation !LayoutRef
+  deriving(Show, Typeable)
+instance LayoutManagerMessage SplitWindow
+
+instance LayoutManager ManualLayoutManager where
+    describeLayout (ManualLayoutManager lyt) = "Manual layout" -- draw it?
+    pureLayout (ManualLayoutManager lyt) _old windows = undefined -- "zip" the windows with the layout. Also take care of divider positions
+    sendMessage (cast -> Just (SplitWindow o ref)) lm = undefined -- split the given window
+    sendMessage _ lm = lm
+
+-- | A layout manager which provides no automation: the layout is driven entirely by 'SplitWindow' messages. However,
+-- if windows have been created without also sending 'SplitWindow' messages, these windows will just be tacked onto the end of
+-- the layout manager.
+manualLayout :: AnyLayoutManager
+manualLayout = AnyLayoutManager (ManualLayoutManager (SingleWindow 0))
 
 ----------------------- Utils
 
@@ -325,8 +369,7 @@ newtype Transposed lm = Transposed lm
 instance LayoutManager lm => LayoutManager (Transposed lm) where
     pureLayout (Transposed lm) l ws = transpose (pureLayout lm (transpose l) ws)
     describeLayout (Transposed lm) = "Transposed version of: " ++ describeLayout lm
-    nextVariant (Transposed lm) = Transposed (nextVariant lm)
-    previousVariant (Transposed lm) = Transposed (previousVariant lm)
+    sendMessage msg (Transposed lm) = Transposed (sendMessage msg lm)
 
 -------------------- 'DividerRef' combinators
 -- $divRefCombinators

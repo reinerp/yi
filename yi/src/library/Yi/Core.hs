@@ -145,7 +145,7 @@ showErrors = withEditor $ do
                bs <- gets $ findBufferWithName "*errors*"
                case bs of
                  [] -> return ()
-                 _  -> do splitE
+                 _  -> do oldSplitE
                           switchToBufferWithNameE "*errors*"
 
 -- | Process an event by advancing the current keymap automaton an
