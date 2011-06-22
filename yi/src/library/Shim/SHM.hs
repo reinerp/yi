@@ -14,7 +14,7 @@ import HscTypes
 import Outputable
 import ErrUtils
 
-import qualified Control.OldException as CE
+import qualified Control.Exception as CE
 import Control.Monad.State
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Map as M
@@ -74,12 +74,12 @@ addSession cabalfile ses =
   modify (\s ->
             s{sessionMap=(M.insert cabalfile ses (sessionMap s))})
 
-shmHandle :: (CE.Exception -> SHM a) -> SHM a -> SHM a
+shmHandle :: CE.Exception exc => (exc -> SHM a) -> SHM a -> SHM a
 shmHandle h m = StateT $ \s ->
                 CE.catch (runStateT m s)
                          (\e -> runStateT (h e) s)
 
-shmCatch :: SHM a -> (CE.Exception -> SHM a) -> SHM a
+shmCatch :: CE.Exception exc => SHM a -> (exc -> SHM a) -> SHM a
 shmCatch = flip shmHandle
 
 getCompBuffer :: SHM CompBuffer

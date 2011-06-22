@@ -10,7 +10,7 @@ import System.Process
 import System.Environment ( getEnv )
 
 import Control.Concurrent       (forkIO)
-import qualified Control.OldException as Control.Exception
+import Control.Exception
 
 import Foreign.Marshal.Alloc(allocaBytes)
 import Foreign.C.String
@@ -28,7 +28,7 @@ import System.Posix.IO
 -- TODO: this will probably be called readProcess in the new process package (2.0)
 popen :: FilePath -> [String] -> Maybe String -> IO (String,String,ExitCode)
 popen file args minput =
-    Control.Exception.handle (\e -> return ([],show e,error (show e))) $ do
+    handle (\e -> return ([],show (e :: IOException),error (show e))) $ do
 
     (inp,out,err,pid) <- runInteractiveProcess file args Nothing Nothing
     hSetBuffering out LineBuffering
@@ -46,8 +46,8 @@ popen file args minput =
     --  data gets pulled as it becomes available. you have to force the
     --  output strings before waiting for the process to terminate.
     --
-    forkIO (Control.Exception.evaluate (length output) >> return ())
-    forkIO (Control.Exception.evaluate (length errput) >> return ())
+    forkIO (evaluate (length output) >> return ())
+    forkIO (evaluate (length errput) >> return ())
 
     -- And now we wait. We must wait after we read, unsurprisingly.
     exitCode <- waitForProcess pid -- blocks without -threaded, you're warned.
